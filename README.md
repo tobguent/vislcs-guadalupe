@@ -20,8 +20,8 @@ The wrapped routines are all contained in the Matlab class 'flow.m'.
 
 ## Data
 The data is too large to be stored on GitHub. Please download the files and copy the *.nc files into the /data folder:
-- cylinder2d.nc:	https://faubox.rrze.uni-erlangen.de/getlink/fiViiRSdE3oBiKsiztW43Um5/cylinder2d.nc
-- guadalupe.nc: 	https://faubox.rrze.uni-erlangen.de/getlink/fi7eHJHSYZshGWZZfNYQB3wW/guadalupe.nc
+- [cylinder2d.nc](https://faubox.rrze.uni-erlangen.de/getlink/fiViiRSdE3oBiKsiztW43Um5/cylinder2d.nc)
+- [guadalupe.nc](https://faubox.rrze.uni-erlangen.de/getlink/fi7eHJHSYZshGWZZfNYQB3wW/guadalupe.nc)
 
 ## Creating figures
 Each figure is implemented in a separate script. You can either run scripts individually, or:
