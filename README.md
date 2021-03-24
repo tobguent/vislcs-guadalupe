@@ -1,10 +1,9 @@
-# This Matlab program contains the code to generate the images of the paper
+# Installation Guidelines
+
+This Matlab program contains the code to generate the images of the paper:
 
 Lagrangian Coherent Structures and Vortex Formation in High Spatiotemporal-Resolution Satellite Winds of an Atmospheric Kármán Vortex Street
 T. Günther, A. Horváth, W. Bresky, J. Daniels, and S.A. Buehler
-
-
-# Installation Guidelines
 
 ## Requirements
 - Matlab (tested on Matlab 2020a)
