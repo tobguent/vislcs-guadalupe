@@ -3,7 +3,7 @@ figure;
 
 % parameters
 stepSize = 100;     % integration step size
-t0 = 12000;         % start time in seconds
+t0 = 5000;          % start time in seconds
 duration = 100000;  % integration duration in seconds
 numVerts = 100;     % number of vertices per line
 numLines = 250;     % number of lines
@@ -12,7 +12,7 @@ numLines = 250;     % number of lines
 f = flow('data/guadalupe.nc');
 
 % plot reflectance map
-slice = (t0) / (f.DomainMax(3) - f.DomainMin(3)) * (f.Resolution(3) - 1) + 1;
+slice = (t0 - f.DomainMin(3)) / (f.DomainMax(3) - f.DomainMin(3)) * (f.Resolution(3) - 1) + 1;
 worldmap(f.AxisY, f.AxisX);
 R = f.Reflectance(1:int32(3*end/5),:,slice);
 Rlat = f.LatReflectance(1:int32(3*end/5),:);

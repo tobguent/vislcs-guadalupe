@@ -12,7 +12,7 @@ numLines = 2;           % number of lines
 f = flow('data/cylinder2d.nc');
 
 % plot reflectance
-slice = (t0 + duration) / (f.DomainMax(3) - f.DomainMin(3)) * (f.Resolution(3) - 1) + 1;
+slice = (t0 + duration f.DomainMin(3)) / (f.DomainMax(3) - f.DomainMin(3)) * (f.Resolution(3) - 1) + 1;
 R = f.Reflectance(:,:,slice);
 x = linspace(f.AxisX(1), f.AxisX(2), size(R,1));
 y = linspace(f.AxisY(1), f.AxisY(2), size(R,2));

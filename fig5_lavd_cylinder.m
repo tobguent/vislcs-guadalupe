@@ -5,7 +5,7 @@ figure;
 stepSize = 0.1;
 duration = 2;
 windowSize = 20;
-slice = 1000;
+slice = 1200;
 
 % read data
 f = flow('data/cylinder2d.nc');
