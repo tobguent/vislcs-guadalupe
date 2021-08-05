@@ -7,6 +7,8 @@
 #include <vector>
 #include <omp.h>
 #include <random>
+#include <queue>
+#include <list>
 
 // Template class for vectors.
 template<typename TScalarType, size_t TDim>
@@ -342,6 +344,31 @@ private:
 	}
 };
 
+// Computation of the flow map of a 2D vector field.
+class FlowMap2d
+{
+public:
+	static void Compute(const SteadyVectorField2d& flow, double stepSize, double duration, double invalidValue, SteadyVectorField2d& result) { ComputeSlice(flow, stepSize, duration, invalidValue, result, 0); }
+	static void Compute(const UnsteadyVectorField2d& flow, double stepSize, double duration, double invalidValue, SteadyVectorField2d& result, int slice) { ComputeSlice(flow, stepSize, duration, invalidValue, result, slice); }
+	static void Compute(const UnsteadyVectorField2d& flow, double stepSize, double duration, double invalidValue, UnsteadyVectorField2d& result) { for (int slice = 0; slice < result.GetResolution()[2]; ++slice) ComputeSlice(flow, stepSize, duration, invalidValue, result, slice); }
+private:
+	template<size_t DimIn, size_t DimOut>
+	static void ComputeSlice(const RegularGrid<Vec2f, DimIn>& flow, double stepSize, double duration, double invalidValue, RegularGrid<Vec2f, DimOut>& phi, int slice) {
+		Vec2i res = phi.GetResolution();
+#pragma omp parallel for schedule(guided)
+		for (int i = 0; i < res[0] * res[1]; ++i) {
+			Vec3i gridCoord({ phi.GetGridCoord(i)[0], phi.GetGridCoord(i)[1], slice });
+			Vec2d coord2 = phi.GetCoordAt(gridCoord);
+			Vec3d coord3 = flow.GetCoordAt(Vec3i({ 0,0,slice }));
+			Vec3d coord({ coord2[0], coord2[1], coord3[2] });
+			bool indomain = true;
+			phi.SetVertexDataAt(gridCoord, Tracer::FlowMap(flow, coord, stepSize, duration, indomain));
+			if (!indomain)
+				phi.SetVertexDataAt(gridCoord, Vec2f({ (float)invalidValue, (float)invalidValue }));
+		}
+	}
+};
+
 // Computation of the finite-time Lyapunov exponent (FTLE) for a 2D vector field.
 // Shadden, S. C., Lekien, F., & Marsden, J. E. (2005). Definition and properties of Lagrangian coherent structures from finite-time Lyapunov exponents in two-dimensional aperiodic flows. Physica D: Nonlinear Phenomena, 212(3-4), 271-304.
 class FiniteTimeLyapunovExponent2d
@@ -521,5 +548,226 @@ private:
 				result.SetVertexDataAt(Vec3i({ gridCoord[0], gridCoord[1], slice }), tex.Sample(phi));
 			else result.SetVertexDataAt(Vec3i({ gridCoord[0], gridCoord[1], slice }), 0);
 		}
+	}
+};
+
+// Calculate evenly-spaced streamlines accordinging to the Jobard-Lefer method.
+class EvenlySpacedStreamlines
+{
+public:
+	static void Compute(const SteadyVectorField2d& flow, double stepSize, double duration, double dTest, double dSep, std::vector<Vec2d>& vertices, std::vector<int>& startOffset, std::vector<int>& lineLength) { ComputeSlice(flow, stepSize, 0, duration, dTest, dSep, vertices, startOffset, lineLength); }
+	static void Compute(const UnsteadyVectorField2d& flow, double stepSize, double t0, double duration, double dTest, double dSep, std::vector<Vec2d>& vertices, std::vector<int>& startOffset, std::vector<int>& lineLength) { ComputeSlice(flow, stepSize, t0, duration, dTest, dSep, vertices, startOffset, lineLength); }
+private:
+
+	// KD tree implementation: https://rosettacode.org/wiki/K-d_tree
+	struct kd_node_t {
+		double x[2];
+		struct kd_node_t* left, * right;
+	};
+	static inline double dist(struct kd_node_t* a, struct kd_node_t* b, int dim) {
+		double t, d = 0;
+		while (dim--) {
+			t = a->x[dim] - b->x[dim];
+			d += t * t;
+		}
+		return d;
+	}
+	static inline void swap(struct kd_node_t* x, struct kd_node_t* y) {
+		double tmp[2];
+		memcpy(tmp, x->x, sizeof(tmp));
+		memcpy(x->x, y->x, sizeof(tmp));
+		memcpy(y->x, tmp, sizeof(tmp));
+	}
+	static struct kd_node_t* find_median(struct kd_node_t* start, struct kd_node_t* end, int idx) {
+		if (end <= start)		return NULL;
+		if (end == start + 1)	return start;
+		struct kd_node_t* p, * store, * md = start + (end - start) / 2;
+		double pivot;
+		while (1) {
+			pivot = md->x[idx];
+			swap(md, end - 1);
+			for (store = p = start; p < end; p++) {
+				if (p->x[idx] < pivot) {
+					if (p != store)
+						swap(p, store);
+					store++;
+				}
+			}
+			swap(store, end - 1);
+			if (store->x[idx] == md->x[idx])	return md;
+			if (store > md) end = store;
+			else        start = store;
+		}
+	}
+	static struct kd_node_t* make_tree(struct kd_node_t* t, size_t len, int i, int dim) {
+		struct kd_node_t* n;
+		if (!len) return 0;
+		if ((n = find_median(t, t + len, i))) {
+			i = (i + 1) % dim;
+			n->left = make_tree(t, n - t, i, dim);
+			n->right = make_tree(n + 1, t + len - (n + 1), i, dim);
+		}
+		return n;
+	}
+	static void nearest(struct kd_node_t* root, struct kd_node_t* nd, int i, int dim, struct kd_node_t** best, double* best_dist) {
+		double d, dx, dx2;
+		if (!root) return;
+		d = dist(root, nd, dim);
+		dx = root->x[i] - nd->x[i];
+		dx2 = dx * dx;
+		if (!*best || d < *best_dist) {
+			*best_dist = d;
+			*best = root;
+		}
+		/* if chance of exact match is high */
+		if (!*best_dist) return;
+		if (++i >= dim) i = 0;
+		nearest(dx > 0 ? root->left : root->right, nd, i, dim, best, best_dist);
+		if (dx2 >= *best_dist) return;
+		nearest(dx > 0 ? root->right : root->left, nd, i, dim, best, best_dist);
+	}
+
+	// stores the bounds and kd-tree of a streamline
+	struct sline {
+		sline(const std::vector<Vec2d>& vertices) : kd_tree(NULL), bounds(Vec2d(), Vec2d()) {
+			Vec2d minCorner({std::numeric_limits<double>::max(), std::numeric_limits<double>::max()});
+			Vec2d maxCorner({-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max()});
+			pts = std::vector<kd_node_t>(vertices.size());
+			for (size_t i = 0; i < vertices.size(); ++i) {
+				minCorner[0] = std::min(minCorner[0], vertices[i][0]);
+				minCorner[1] = std::min(minCorner[1], vertices[i][1]);
+				maxCorner[0] = std::max(maxCorner[0], vertices[i][0]);
+				maxCorner[1] = std::max(maxCorner[1], vertices[i][1]);
+				pts[i].x[0] = vertices[i][0];
+				pts[i].x[1] = vertices[i][1];
+			}
+			bounds = BoundingBox2d(minCorner, maxCorner);
+			kd_tree = make_tree(pts.data(), pts.size(), 0, 2);
+		}
+		// test if a point is close to the existing line
+		bool isClose(const Vec2d& pnt, double dTest) {
+			//if (!bounds.Contains(pnt, dTest)) return false;
+			struct kd_node_t testNode = { {pnt[0], pnt[1]} };
+			struct kd_node_t* found = nullptr;
+			double best_dist = 0;
+			nearest(kd_tree, &testNode, 0, 2, &found, &best_dist);
+			if (found != nullptr)
+				return best_dist < dTest* dTest;
+			else return false;
+		}
+		BoundingBox2d bounds;
+		std::vector<kd_node_t> pts;
+		kd_node_t* kd_tree;
+	};
+
+	template<size_t DimIn>
+	static void ComputeSlice(const RegularGrid<Vec2f, DimIn>& flow, double stepSize, double t0, double duration, double dTest, double dSep, std::vector<Vec2d>& vertices, std::vector<int>& startOffset, std::vector<int>& lineLength) {
+		std::queue<Vec2d> seeds;
+		seeds.push((flow.GetDomain().Max + flow.GetDomain().Min) / 2);
+		std::list<sline*> existingLines;
+		double minVertDist = std::pow(std::sqrt(flow.GetVoxelSize().lengthSquared()) / 2, 2);
+
+		do
+		{
+			// get next seed candidate
+			Vec2d seed = seeds.front();
+			seeds.pop();
+
+			// is the seed far enough away from existing line?
+			bool valid = true;
+			for (sline* eline : existingLines) {
+				if (eline->isClose(seed, dTest)) {
+					valid = false;
+					break;
+				}
+			}
+			if (!valid) continue;
+
+			// trace streamline
+			std::vector<Vec2d> curve;
+			double tau = 0;
+			Vec2d pnt = seed;
+			curve.push_back(pnt);
+			// forward tracing
+			bool indomain = true;
+			valid = true;
+			while (tau < duration && indomain && valid)
+			{
+				double dt = std::min(stepSize, duration - tau);
+				std::vector<typedef RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
+				Tracer::Streamline(flow, Vec3d{ pnt[0], pnt[1], t0 }, stepSize, dt, 2, pnts);
+				pnt = Vec2d{ pnts.back()[0], pnts.back()[1] };
+				tau += dt;
+				for (sline* eline : existingLines) {
+					if (eline->isClose(pnt, dTest)) {
+						valid = false;
+						break;
+					}
+				}
+				if (valid && indomain)
+					if (curve.empty() || (curve.back() - pnt).lengthSquared() > minVertDist)
+						curve.push_back(pnt);
+			}
+			std::reverse(std::begin(curve), std::end(curve));
+			pnt = seed;
+			// backward tracing
+			indomain = true;
+			valid = true;
+			tau = 0;
+			while (tau < duration && indomain && valid)
+			{
+				double dt = std::max(stepSize, tau - duration);
+				std::vector<typedef RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
+				Tracer::Streamline(flow, Vec3d{ pnt[0], pnt[1], t0 }, -stepSize, dt, 2, pnts);
+				pnt = Vec2d{ pnts.back()[0], pnts.back()[1] };
+				tau += dt;
+				for (sline* eline : existingLines) {
+					if (eline->isClose(pnt, dTest)) {
+						valid = false;
+						break;
+					}
+				}
+				if (valid && indomain)
+					if (curve.empty() || (curve.back() - pnt).lengthSquared() > minVertDist)
+						curve.push_back(pnt);
+			}
+
+			// add line to output
+			startOffset.push_back((int)vertices.size());
+			for (auto& vert : curve) {
+				vertices.push_back(vert);
+			}
+			lineLength.push_back((int)curve.size());
+
+			// add line to kd-tree
+			sline* existingLine = new sline(curve);
+			existingLines.push_back(existingLine);
+
+			// add further candidates
+			for (size_t i = 1; i < curve.size() - 1; ++i) {
+				Vec2d tangent = curve[i + 1] - curve[i - 1];
+				double invLength = 1.0 / std::sqrt(tangent.lengthSquared());
+				Vec2d offset({ -tangent[1] * invLength, tangent[0] * invLength });
+				bool valid = true;
+				for (sline* eline : existingLines) {
+					if (eline->isClose(curve[i] + offset * dSep, dTest) || !flow.GetDomain().Contains(curve[i] + offset * dSep)) {
+						valid = false;
+						break;
+					}
+				}
+				if (valid)
+					seeds.push(curve[i] + offset * dSep);
+				valid = true;
+				for (sline* eline : existingLines) {
+					if (eline->isClose(curve[i] - offset * dSep, dTest) || !flow.GetDomain().Contains(curve[i] - offset * dSep)) {
+						valid = false;
+						break;
+					}
+				}
+				if (valid)
+					seeds.push(curve[i] - offset * dSep);
+			}
+		} while (!seeds.empty());
+		while (!existingLines.empty()) delete existingLines.front(), existingLines.pop_front();
 	}
 };

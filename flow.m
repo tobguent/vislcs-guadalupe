@@ -105,6 +105,30 @@ classdef flow < handle
             end
         end
                 
+        % Computes the flow map. Particles that leave the domain receive
+        % the value 'invalidValue#. 'slice' is an optional parameter. 
+        % If it is not specified, FTLE is computed for the entire data set.
+        % The result 'f' is therefore either a slice (2D array) or a 
+        % volume (3D array).
+        function [f] = flowmap(obj, stepSize, duration, invalidValue, out_res, slice)
+            if nargin < 5
+                out_res = obj.Resolution;
+            else
+                if length(out_res) == 2
+                    out_res = [out_res(1), out_res(2), 1];
+                end
+            end
+            if nargin > 5
+                f = cflowmap(obj.Resolution, obj.DomainMin, obj.DomainMax, obj.Velocity, stepSize, duration, invalidValue, int32(out_res), slice - 1);
+                f = reshape(f, [2,out_res(1),out_res(2)]);
+                f = permute(f, [2, 3, 1]);
+            else
+                f = cflowmap(obj.Resolution, obj.DomainMin, obj.DomainMax, obj.Velocity, stepSize, duration, invalidValue, int32(out_res));
+                f = reshape(f, [2,out_res(1),out_res(2),out_res(3)]);
+                f = permute(f, [2, 3, 4, 1]);
+            end
+        end
+        
         % Computes finite-time Lyapunov exponent. 'slice' is an optional
         % parameter. If it is not specified, FTLE is computed for the
         % entire data set. The result 'f' is therefore either a slice
@@ -186,6 +210,13 @@ classdef flow < handle
         function [f] = timeline(obj, stepSize, duration, seedA, seedB, numSteps)
             f = ctimeline(obj.Resolution, obj.DomainMin, obj.DomainMax, obj.Velocity, stepSize, duration, seedA, seedB, int32(numSteps));
             f = reshape(f, 3, [])';
+        end
+        
+        % Places streamlines with even spacing using the Jobard-Lefer
+        % algorithm for a single time slice at time t0.
+        function [vert,offset,length] = evstreamline(obj, stepSize, t0, duration, dtest, dsep)
+            [vert,offset,length] = cevstreamline(obj.Resolution, obj.DomainMin, obj.DomainMax, obj.Velocity, stepSize, t0, duration, dtest, dsep);
+            vert = reshape(vert, 2, [])';
         end
         
         % Compute a line integral convolution (LIC). 'slice' is an
