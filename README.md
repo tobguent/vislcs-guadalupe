@@ -8,9 +8,9 @@ T. Günther, A. Horváth, W. Bresky, J. Daniels, and S.A. Buehler
 ![teaser](teaser.png)
 
 ## Requirements
-- Matlab (tested on Matlab 2020a)
+- Matlab (tested on Matlab 2021a)
 - Matlab Mapping Toolbox (for plotting of the Guadalupe data)
-- C++ compiler (tested with Visual Studio Community Edition 2019)
+- C++ compiler (tested on Windows with MSVC and MinGW)
 
 ## Setup Mex (C++ binding for Matlab)
 The majority of the code is implemented in C++ in the file vislcs.hpp. Each routine of this class has a Matlab wrapper in the /cpp folder. This code has to be compiled before it becomes useable in Matlab.
