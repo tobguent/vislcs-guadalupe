@@ -9,6 +9,7 @@
 #include <random>
 #include <queue>
 #include <list>
+#include <cstring>
 
 // Template class for vectors.
 template<typename TScalarType, size_t TDim>
@@ -117,7 +118,8 @@ public:
 		}
 		TDomainCoord vfSampleInterpol = vfSample - static_cast<TDomainCoord>(viSampleBase0);
 		size_t numCorners = (size_t)std::pow(2, TDomainCoord::Dim);
-		TValue result({ 0 });
+		TValue result;
+		std::memset(&result, 0, sizeof(TValue));
 		for (size_t i = 0; i < numCorners; ++i) {
 			typename TDomainCoord::TScalar weight(1);
 			TGridCoord gridCoord;
@@ -694,7 +696,7 @@ private:
 			while (tau < duration && indomain && valid)
 			{
 				double dt = std::min(stepSize, duration - tau);
-				std::vector<typedef RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
+				std::vector<typename RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
 				Tracer::Streamline(flow, Vec3d{ pnt[0], pnt[1], t0 }, stepSize, dt, 2, pnts);
 				pnt = Vec2d{ pnts.back()[0], pnts.back()[1] };
 				tau += dt;
@@ -717,7 +719,7 @@ private:
 			while (tau < duration && indomain && valid)
 			{
 				double dt = std::max(stepSize, tau - duration);
-				std::vector<typedef RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
+				std::vector<typename RegularGrid<Vec2f, DimIn>::TDomainCoord> pnts;
 				Tracer::Streamline(flow, Vec3d{ pnt[0], pnt[1], t0 }, -stepSize, dt, 2, pnts);
 				pnt = Vec2d{ pnts.back()[0], pnts.back()[1] };
 				tau += dt;
